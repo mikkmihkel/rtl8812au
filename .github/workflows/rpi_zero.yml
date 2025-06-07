@@ -1,4 +1,4 @@
-name: Raspberry Pi Driver Build
+name: Raspberry Pi Driver Build 2w
 
 on:
   workflow_dispatch:
@@ -9,8 +9,10 @@ jobs:
     name: Build RTL8812AU driver for RPi Zero 2W (kernel 6.1.x-v8)
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: 'recursive'
+
+    - name: Download rtl8812au driver source
+      run: |
+        git clone -b v5.6.4.2 https://github.com/aircrack-ng/rtl8812au.git
 
     - name: Install dependencies
       run: |
