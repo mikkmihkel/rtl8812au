@@ -57,14 +57,16 @@ jobs:
         export ARCH=arm64
         sed -i 's/^MAKE="/MAKE="ARCH=arm64\ /' dkms.conf
         
-        # Find the appropriate kernel headers directory
-        KVER=$(ls /lib/modules | grep "v8" | head -n 1)
-        if [ -z "$KVER" ]; then
-          echo "Warning: No v8 kernel found, using target kernel version"
-          KVER="$TARGET_KERNEL"
-        fi
+        # Use the target kernel version directly
+        KVER="$TARGET_KERNEL"
+        echo "Using target kernel version: $KVER"
         
-        echo "Using kernel version: $KVER"
+        # Check if we have kernel headers available
+        AVAILABLE_HEADERS=$(ls /lib/modules | grep "v8" | head -n 1)
+        if [ -n "$AVAILABLE_HEADERS" ]; then
+          echo "Available kernel headers: $AVAILABLE_HEADERS"
+          echo "Note: Building for target $KVER instead of available $AVAILABLE_HEADERS"
+        fi
         
         # Build the driver (following README approach)
         ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make KVER=$KVER -j$(nproc)
