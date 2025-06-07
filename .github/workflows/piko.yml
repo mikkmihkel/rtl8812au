@@ -1,0 +1,17 @@
+name: Build-Pi-RTL8812AU
+on: [workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/arm64v8/debian:bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt update && apt -y install build-essential bc kmod git wget
+      - env: { KVER: 6.12.25+rpt-rpi-v8 }
+        run: |
+          wget -qO- https://github.com/raspberrypi/firmware/raw/$KVER/headers.tar.xz | tar -xJf -
+          sed -i 's/CONFIG_PLATFORM_ARM64_RPI = n/CONFIG_PLATFORM_ARM64_RPI = y/' Makefile
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- KSRC=$PWD/headers/build modules -j8
+      - uses: actions/upload-artifact@v4
+        with: { name: 88XXau-ko, path: 88XXau.ko }
