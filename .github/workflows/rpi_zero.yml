@@ -1,12 +1,17 @@
-name: Raspberry Pi Driver Build 2w
+name: Raspberry Pi Driver Build
 
 on:
   workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: 'Target kernel version (e.g., 6.12.25+rpt-rpi-v8)'
+        required: false
+        default: '6.12.25+rpt-rpi-v8'
 
 jobs:
   build_pi_zero_2w_driver:
     runs-on: ubuntu-22.04
-    name: Build RTL8812AU driver for RPi Zero 2W (kernel 6.1.x-v8)
+    name: Build RTL8812AU driver for RPi Zero 2W
     steps:
     - uses: actions/checkout@v4
 
@@ -14,25 +19,56 @@ jobs:
       run: |
         git clone -b v5.6.4.2 https://github.com/aircrack-ng/rtl8812au.git
 
-    - name: Install dependencies
+    - name: Install dependencies (following official README)
       run: |
         sudo apt-get update
-        # Add bookworm repo for recent kernel headers
-        sudo apt-get install -y curl gnupg2
+        # Install cross-compilation tools
+        sudo apt-get install -y crossbuild-essential-arm64
+        # Install build dependencies as per README
+        sudo apt-get install -y bc mokutil build-essential libelf-dev make curl gnupg2
+        
+        # Add Raspberry Pi repository for kernel headers
         sudo curl -fsSL http://archive.raspberrypi.org/debian/raspberrypi.gpg.key --output /usr/share/keyrings/raspberrypi.gpg.key
         echo "deb [arch=amd64, signed-by=/usr/share/keyrings/raspberrypi.gpg.key] http://archive.raspberrypi.org/debian/ bookworm main" | sudo tee /etc/apt/sources.list.d/raspberrypi.list > /dev/null
         sudo apt-get update
-        sudo apt-get install -y raspberrypi-kernel-headers crossbuild-essential-arm64 make bc mokutil build-essential libelf-dev
+        
+        # Install raspberrypi-kernel-headers as per README
+        sudo apt-get install -y raspberrypi-kernel-headers
 
-    - name: Build driver
+    - name: Configure and build driver (following official README)
       id: build_driver
       run: |
         cd rtl8812au
+        
+        # Determine target kernel version
+        if [ -n "${{ github.event.inputs.kernel_version }}" ]; then
+          TARGET_KERNEL="${{ github.event.inputs.kernel_version }}"
+        else
+          TARGET_KERNEL="6.12.25+rpt-rpi-v8"
+        fi
+        
+        echo "Building for kernel version: $TARGET_KERNEL"
+        
+        # Configure Makefile for ARM64 Raspberry Pi (as per README)
         sed -i 's/CONFIG_PLATFORM_I386_PC = y/CONFIG_PLATFORM_I386_PC = n/g' Makefile
         sed -i 's/CONFIG_PLATFORM_ARM64_RPI = n/CONFIG_PLATFORM_ARM64_RPI = y/g' Makefile
+        
+        # Set ARM64 environment and modify dkms.conf (as per README)
+        export ARCH=arm64
+        sed -i 's/^MAKE="/MAKE="ARCH=arm64\ /' dkms.conf
+        
+        # Find the appropriate kernel headers directory
         KVER=$(ls /lib/modules | grep "v8" | head -n 1)
-        echo "Building for kernel version: $KVER"
-        make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- KVER=$KVER -j$(nproc)
+        if [ -z "$KVER" ]; then
+          echo "Warning: No v8 kernel found, using target kernel version"
+          KVER="$TARGET_KERNEL"
+        fi
+        
+        echo "Using kernel version: $KVER"
+        
+        # Build the driver (following README approach)
+        ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make KVER=$KVER -j$(nproc)
+        
         echo "kernel_version=$KVER" >> $GITHUB_OUTPUT
 
     - name: Prepare artifact
@@ -43,6 +79,76 @@ jobs:
           DRIVER_NAME="8812au.ko"
         fi
         cp rtl8812au/$DRIVER_NAME "build/${{ steps.build_driver.outputs.kernel_version }}_${DRIVER_NAME}"
+        
+        # Create README-compliant install script
+        cat > build/install.sh << 'INSTALL_EOF'
+        #!/bin/bash
+        # RTL8812AU Driver Installation (following aircrack-ng README)
+        
+        KERNEL_VER=$(uname -r)
+        DRIVER_FILE=$(ls *88XXau.ko | head -n 1)
+        
+        echo "Installing RTL8812AU driver for kernel $KERNEL_VER"
+        echo "Using driver file: $DRIVER_FILE"
+        echo ""
+        echo "NOTE: This driver is DEPRECATED according to aircrack-ng."
+        echo "Consider using rtw88 drivers: https://github.com/lwfinger/rtw88"
+        echo ""
+        
+        # Install driver
+        sudo mkdir -p /lib/modules/$KERNEL_VER/kernel/drivers/net/wireless/
+        sudo cp "$DRIVER_FILE" /lib/modules/$KERNEL_VER/kernel/drivers/net/wireless/88XXau.ko
+        sudo depmod -a
+        
+        # Load driver
+        echo "Loading driver..."
+        if sudo modprobe 88XXau; then
+            echo "✓ Driver loaded successfully!"
+            
+            # Make it persistent (add to /etc/modules)
+            if ! grep -q "88XXau" /etc/modules; then
+                echo "88XXau" | sudo tee -a /etc/modules
+                echo "✓ Driver added to /etc/modules for auto-loading"
+            fi
+            
+            echo ""
+            echo "Next steps:"
+            echo "1. Connect your RTL8812AU USB adapter"
+            echo "2. Check interfaces: iwconfig"
+            echo "3. Set monitor mode (if needed):"
+            echo "   sudo ip link set wlan1 down"
+            echo "   sudo iw dev wlan1 set type monitor"  
+            echo "   sudo ip link set wlan1 up"
+        else
+            echo "✗ Driver failed to load."
+            echo "Check kernel logs: dmesg | tail -20"
+            echo ""
+            echo "Troubleshooting:"
+            echo "- Ensure kernel version matches exactly: $(uname -r)"
+            echo "- Try building locally on the Pi with 'make && sudo make install'"
+        fi
+        INSTALL_EOF
+        chmod +x build/install.sh
+        
+        # Add deprecation notice
+        cat > build/README.txt << 'README_EOF'
+        RTL8812AU Driver Build
+        ======================
+        
+        ⚠️  IMPORTANT: This driver is DEPRECATED
+        
+        According to the official aircrack-ng repository:
+        "THESE DRIVERS IS DEPRECATED. Use the mac80211 drivers over at https://github.com/lwfinger/rtw88"
+        
+        Consider using the newer rtw88 drivers for better support and maintenance.
+        
+        Installation:
+        1. Copy the .ko file to your Raspberry Pi
+        2. Run: chmod +x install.sh && ./install.sh
+        
+        Built for kernel: ${{ steps.build_driver.outputs.kernel_version }}
+        Source: https://github.com/aircrack-ng/rtl8812au v5.6.4.2
+        README_EOF
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
