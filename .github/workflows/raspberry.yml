@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-22.04
     name: Build RTL8812AU driver for Raspberry Pi
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -47,7 +47,7 @@ jobs:
       run: |
         tar czvf rtl8812au-raspberrypi-${{ steps.build_raspberry.outputs.kernel_ver }}.tar.gz -C build/raspberrypi/ .
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RPi ${{ matrix.version }} kernel drivers
         path: rtl8812au*.tar.gz
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-22.04
     name: Build RTL8812AU driver for Raspberry Pi (re4son)
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -101,7 +101,7 @@ jobs:
       run: |
         tar czvf rtl8812au-kalipi-${{ steps.build_kali.outputs.kernel_ver }}.tar.gz -C build/kalipi/ .
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RPi re4son kernel drivers
         path: rtl8812au*.tar.gz
