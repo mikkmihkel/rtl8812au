@@ -1,4 +1,4 @@
-name: Raspberry Pi Driver Build /070625
+name: Raspberry Pi Driver Build
 
 on:
   workflow_dispatch:
@@ -9,6 +9,8 @@ jobs:
     name: Build RTL8812AU driver for RPi Zero 2W (kernel 6.1.x-v8)
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
 
     - name: Install dependencies
       run: |
@@ -44,4 +46,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: rtl8812au-driver-${{ steps.build_driver.outputs.kernel_version }}
-        path: build/
+        path: build/ 
